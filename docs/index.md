@@ -240,7 +240,6 @@ guides/sft-openmathinstruct2.md
 :hidden:
 
 guides/nemotron-3-nano.md
-guides/nemotron-3-super.md
 adding-new-models.md
 guides/sft.md
 guides/dpo.md
