@@ -1,17 +1,17 @@
 defaults: ../../grpo_math_1B.yaml
 
 grpo:
-  num_prompts_per_step: 2
+  num_prompts_per_step: 4
   num_generations_per_prompt: 8
 
 checkpointing:
-  checkpoint_dir: results/grpo-nemotron3-super-120BA12B-8n8g-megatron
+  checkpoint_dir: results/grpo-nemotron3-super-120BA12B-16n8g-megatron
 
 policy:
   model_name: "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16"
   tokenizer:
     name: "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16"
-  train_global_batch_size: 16
+  train_global_batch_size: 32
   train_micro_batch_size: 1
   logprob_batch_size: 1
   logprob_chunk_size: 2048              # Chunk logprob to reduce peak memory; requires defer_fp32_logits
@@ -22,13 +22,13 @@ policy:
     enabled: false
   megatron_cfg:
     enabled: true
-    # Production uses TP=4/PP=1/CP=8/EP=8 (B200); nightly uses EP=16 for H100 and drops CP to 1
-    # World size = TP(4) x PP(1) x CP(1) x DP(16) = 64 GPUs = 8 nodes; EP(16) <= DP(16) ✓
-    # EP=16 halves expert memory vs EP=8: 100B/16=6.25B*2B=~12.5 GB/GPU vs ~25 GB/GPU
+    # H100 nightly: TP=4/PP=1/CP=1/EP=32 on 16 nodes (128 GPUs)
+    # World size = TP(4) x PP(1) x CP(1) x DP(32) = 128 GPUs = 16 nodes; EP(32) <= DP(32)
+    # EP=32 reduces expert memory: 100B/32*2B=~6 GB/GPU vs ~25 GB/GPU with EP=8
     tensor_model_parallel_size: 4
     pipeline_model_parallel_size: 1
     context_parallel_size: 1
-    expert_model_parallel_size: 16
+    expert_model_parallel_size: 32
     sequence_parallel: true
     activation_checkpointing: true
     bias_activation_fusion: false       # Required for this model family
@@ -42,17 +42,16 @@ policy:
     defer_fp32_logits: true             # Required when logprob_chunk_size is set
   generation:
     vllm_cfg:
-      # TP=8: 120B BF16 / 8 ≈ 29 GB/GPU for vLLM weights; 0.5 × 80 = 40 GB leaves ~8 GB for KV cache
       tensor_parallel_size: 8
-      gpu_memory_utilization: 0.5      # EP=16 frees ~12 GB training-side; vLLM needs 0.5 to fit KV cache
+      gpu_memory_utilization: 0.5
 
 logger:
   wandb_enabled: true
   tensorboard_enabled: true
   wandb:
     project: nemo-rl
-    name: grpo-nemotron3-super-120BA12B-8n8g-megatron
+    name: grpo-nemotron3-super-120BA12B-16n8g-megatron
 
 cluster:
   gpus_per_node: 8
-  num_nodes: 8
+  num_nodes: 16

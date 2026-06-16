@@ -19,6 +19,8 @@ checkpointing:
 grpo:
   num_prompts_per_step: 2
   num_generations_per_prompt: 8
+  async_grpo:
+    enabled: false
 
 policy:
   model_name: "Qwen/Qwen3-1.7B"
@@ -27,14 +29,24 @@ policy:
   train_global_batch_size: 16
   train_micro_batch_size: 1
   logprob_batch_size: 1
-  max_total_sequence_length: 8192
-  make_sequence_length_divisible_by: 1
+  # SWE1 prompts include full repo context; override Qwen3-1.7B's native 40960
+  # limit via hf_config_overrides below. RoPE quality degrades past 40K but
+  # this is a pipeline sanity check, not a quality evaluation.
+  max_total_sequence_length: 81920
+  # CP=8 requires sequences divisible by 2*CP=16
+  make_sequence_length_divisible_by: 16
+
+  # Override Qwen3-1.7B's max_position_embeddings so vLLM accepts 131072.
+  # Without this, vLLM rejects max_model_len > 40960 with a ValidationError.
+  hf_config_overrides:
+    max_position_embeddings: 131072
 
   megatron_cfg:
     # Qwen3-1.7B is a dense model — override MoE parallelism from base
     tensor_model_parallel_size: 1
     pipeline_model_parallel_size: 1
-    context_parallel_size: 1
+    # CP=8 splits 131072-token sequences across 8 GPUs (16384 tokens/GPU)
+    context_parallel_size: 8
     expert_model_parallel_size: 1
     sequence_parallel: false
     activation_checkpointing: false
@@ -46,13 +58,13 @@ policy:
     # Qwen3-1.7B uses standard <think> tags; replace nano_v3 custom parser
     vllm_cfg:
       tensor_parallel_size: 1
-      max_model_len: 8192
+      max_model_len: 81920
+      # Null out the nano_v3 plugin inherited from stage2_swe1.yaml
+      reasoning_parser_plugin: null
       http_server_serving_chat_kwargs:
         enable_auto_tools: true
         tool_parser: qwen3_coder
         reasoning_parser: deepseek_r1
-        # Null out the nano_v3 plugin inherited from stage2_swe1.yaml
-        reasoning_parser_plugin: null
     # Override vllm_kwargs to remove mamba_ssm_cache_dtype inherited from base
     vllm_kwargs:
       compilation_config:
@@ -60,12 +72,10 @@ policy:
 
 data:
   train:
-    # TODO: Set to the cluster path for the swe1 training split.
     # See docs/guides/nemotron-3-super.md for download instructions.
-    data_path: "/path/to/nemotron-super-training-blends/swe1/train-split.jsonl"
+    data_path: "/mnt/nemotron_data/swe1/train-split.jsonl"
   validation:
-    # TODO: Set to the cluster path for the swe1 validation split.
-    data_path: "/path/to/nemotron-super-training-blends/swe1/val-split.jsonl"
+    data_path: "/mnt/nemotron_data/swe1/val-split.jsonl"
 
 logger:
   wandb_enabled: true

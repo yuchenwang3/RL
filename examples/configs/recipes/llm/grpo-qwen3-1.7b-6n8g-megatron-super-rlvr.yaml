@@ -21,6 +21,8 @@ checkpointing:
 grpo:
   num_prompts_per_step: 16
   num_generations_per_prompt: 8
+  async_grpo:
+    enabled: false
 
 policy:
   model_name: "Qwen/Qwen3-1.7B"
@@ -49,12 +51,12 @@ policy:
     vllm_cfg:
       tensor_parallel_size: 1
       max_model_len: 8192
+      # Null out the nano_v3 plugin inherited from stage1_rlvr.yaml
+      reasoning_parser_plugin: null
       http_server_serving_chat_kwargs:
         enable_auto_tools: true
         tool_parser: qwen3_coder
         reasoning_parser: deepseek_r1
-        # Null out the nano_v3 plugin inherited from stage1_rlvr.yaml
-        reasoning_parser_plugin: null
     # Qwen3-1.7B is a dense Transformer — remove Mamba-specific kwarg
     vllm_kwargs:
       compilation_config:
@@ -62,34 +64,36 @@ policy:
 
 data:
   train:
-    # TODO: Set to the cluster path for the rlvr1 training split.
     # See docs/guides/nemotron-3-super.md for download instructions.
-    data_path: "/path/to/nemotron-super-training-blends/rlvr1/train-split.jsonl"
+    data_path: "/mnt/nemotron_data/rlvr1/train-split.jsonl"
   validation:
-    # TODO: Set to the cluster path for the rlvr1 validation split.
-    data_path: "/path/to/nemotron-super-training-blends/rlvr1/val-split.jsonl"
+    data_path: "/mnt/nemotron_data/rlvr1/val-split.jsonl"
 
 env:
   nemo_gym:
+    # genrm_compare buffers rollouts until num_rollouts_per_prompt are received
+    # before scoring. Must match num_generations_per_prompt or rollout
+    # collection hangs waiting for a cohort that never fills.
+    genrm_compare_resources_server:
+      resources_servers:
+        genrm_compare:
+          num_rollouts_per_prompt: 8  # must match grpo.num_generations_per_prompt
     # Scaled-down judge server settings from small_stage1_rlvr_21node.yaml.
-    # The full config_paths and num_gpu_nodes: 5 are inherited from stage1_rlvr.yaml.
+    # num_gpu_nodes: 5 is inherited from stage1_rlvr.yaml.
     genrm_model:
       responses_api_models:
-        vllm_model:
-          # Inherits model: nvidia/Qwen3-Nemotron-235B-A22B-GenRM-2603 from stage1_rlvr.yaml
-          router_dp_size: 2
-          server_args:
+        genrm_model:
+          vllm_serve_kwargs:
             max_num_seqs: 16
     nl2bash_judge_model:
       responses_api_models:
-        vllm_model:
-          router_dp_size: 2
-          server_args:
+        local_vllm_model:
+          vllm_serve_kwargs:
             max_num_seqs: 16
     safety_judge_model:
       responses_api_models:
-        vllm_model:
-          server_args:
+        local_vllm_model:
+          vllm_serve_kwargs:
             max_num_seqs: 16
 
 logger:
@@ -101,6 +105,7 @@ logger:
 
 cluster:
   gpus_per_node: 8
-  # Total nodes: 1 training + vllm (colocated) +
-  # 5 nemo-gym (env.nemo_gym.num_gpu_nodes, inherited from stage1_rlvr.yaml)
-  num_nodes: 6
+  # cluster.num_nodes is the Ray-cluster (policy) node count only.
+  # The 5 nemo-gym judge nodes (env.nemo_gym.num_gpu_nodes, inherited from
+  # stage1_rlvr.yaml) are allocated separately outside the policy Ray cluster.
+  num_nodes: 1

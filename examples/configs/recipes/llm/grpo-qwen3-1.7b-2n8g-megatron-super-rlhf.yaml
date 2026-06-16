@@ -19,6 +19,8 @@ checkpointing:
 grpo:
   num_prompts_per_step: 2
   num_generations_per_prompt: 8
+  async_grpo:
+    enabled: false
 
 policy:
   model_name: "Qwen/Qwen3-1.7B"
@@ -47,12 +49,12 @@ policy:
     vllm_cfg:
       tensor_parallel_size: 1
       max_model_len: 8192
+      # Null out the nano_v3 plugin inherited from stage3_rlhf.yaml
+      reasoning_parser_plugin: null
       http_server_serving_chat_kwargs:
         enable_auto_tools: true
         tool_parser: qwen3_coder
         reasoning_parser: deepseek_r1
-        # Null out the nano_v3 plugin inherited from stage3_rlhf.yaml
-        reasoning_parser_plugin: null
     # Override vllm_kwargs to remove mamba_ssm_cache_dtype inherited from base
     vllm_kwargs:
       compilation_config:
@@ -60,26 +62,25 @@ policy:
 
 data:
   train:
-    # TODO: Set to the cluster path for the rlhf training split.
     # See docs/guides/nemotron-3-super.md for download instructions.
-    data_path: "/path/to/nemotron-super-training-blends/rlhf/train-split.jsonl"
+    data_path: "/mnt/nemotron_data/rlhf/train-split.jsonl"
   validation:
-    # TODO: Set to the cluster path for the rlhf validation split.
-    data_path: "/path/to/nemotron-super-training-blends/rlhf/val-split.jsonl"
+    data_path: "/mnt/nemotron_data/rlhf/val-split.jsonl"
 
 env:
   nemo_gym:
     # 1 dedicated GPU node for the GenRM judge server (reduced from base's 8).
-    # Base uses router_dp_size=8 x TP=8 = 64 GPUs; nightly uses a single
-    # server instance (router_dp_size=1 x TP=8 = 8 GPUs = 1 node).
+    # Base uses data_parallel_size=8 x TP=8 = 64 GPUs; nightly uses a single
+    # TP=8 instance (DP=1 x TP=8 = 8 GPUs = 1 node).
+    # genrm_model uses the base's nvidia/Qwen3-Nemotron-235B-A22B-GenRM-2603
+    # with data_parallel_size: 1, tensor_parallel_size: 8 (8 GPUs = 1 node).
     num_gpu_nodes: 1
-    genrm_model:
-      responses_api_models:
-        vllm_model:
-          # Inherits TP=8, max_model_len=60000, reasoning_parser=deepseek_r1
-          # from stage3_rlhf.yaml; only override model path and dp size.
-          model: "nvidia/Qwen3-Nemotron-235B-A22B-GenRM-2603"
-          router_dp_size: 1
+    genrm_compare_resources_server:
+      resources_servers:
+        genrm_compare:
+          # Must match grpo.num_generations_per_prompt so the cohort fills and
+          # pairwise comparison actually runs (base config defaults to 16).
+          num_rollouts_per_prompt: 8
 
 logger:
   wandb_enabled: true
@@ -90,5 +91,8 @@ logger:
 
 cluster:
   gpus_per_node: 8
-  # Total nodes: 1 training + vllm (colocated) + 1 nemo-gym (genrm)
-  num_nodes: 2
+  # cluster.num_nodes is the Ray-cluster (policy) node count only.
+  # The GenRM gym node (env.nemo_gym.num_gpu_nodes: 1) is allocated separately
+  # outside the policy Ray cluster.
+  # Total SLURM nodes = cluster.num_nodes (1) + env.nemo_gym.num_gpu_nodes (1) = 2.
+  num_nodes: 1
