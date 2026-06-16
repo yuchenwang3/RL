@@ -13,14 +13,10 @@ NUM_MINUTES=45
 
 exit_if_max_steps_reached
 
-# Pre-fetch nemo-gym venvs required by the SWE environments. The production
-# workflow bakes these into a custom container image via prefetch_venvs.py at
-# build time; here we run it at test startup instead so the standard nightly
-# container works without a rebuild.
-cd $PROJECT_ROOT
-uv run python examples/nemo_gym/prefetch_venvs.py $CONFIG_PATH
-
 # Run the experiment
+VLLM_CACHE_DIR=${HF_HOME}/vllm_compile_cache \
+FLASHINFER_CUBIN_CACHE=${HF_HOME}/flashinfer_cubins \
+FLASHINFER_WS_BASE=${HF_HOME}/flashinfer_workspace \
 uv run examples/run_grpo.py \
     --config $CONFIG_PATH \
     grpo.max_num_steps=$MAX_STEPS \
@@ -32,6 +28,7 @@ uv run examples/run_grpo.py \
     logger.tensorboard_enabled=True \
     checkpointing.enabled=True \
     checkpointing.checkpoint_dir=$CKPT_DIR \
+    env.nemo_gym.uv_venv_dir=/opt/gym_venvs \
     $@ \
     2>&1 | tee $RUN_LOG
 
@@ -39,7 +36,6 @@ uv run examples/run_grpo.py \
 uv run tests/json_dump_tb_logs.py $LOG_DIR --output_path $JSON_METRICS
 
 # Only run metrics if the target step is reached
-## TODO: adjust 
 if [[ $(jq 'to_entries | .[] | select(.key == "train/loss") | .value | keys | map(tonumber) | max' $JSON_METRICS) -ge $MAX_STEPS ]]; then
     uv run tests/check_metrics.py $JSON_METRICS \
         'median(data["train/token_mult_prob_error"]) < 1.1' \

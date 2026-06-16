@@ -50,6 +50,23 @@ data:
   validation:
     data_path: "${oc.env:HF_HOME}/superv3_data/swe1/val-split.jsonl"
 
+env:
+  nemo_gym:
+    # The SWE1 training data references agent_ref.name =
+    # "single_step_tool_use_with_argument_comparison_swe", but the base
+    # stage2_swe1.yaml config_paths only register "swe_pivot_*" keys.
+    # Register the expected key here as an alias pointing to the same server.
+    single_step_tool_use_with_argument_comparison_swe:
+      responses_api_agents:
+        tool_simulation_agent:
+          entrypoint: app.py
+          resources_server:
+            type: resources_servers
+            name: swe_pivot_single_step_tool_use_with_argument_comparison_resources_server
+          model_server:
+            type: responses_api_models
+            name: policy_model
+
 logger:
   wandb_enabled: true
   tensorboard_enabled: true
