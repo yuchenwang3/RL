@@ -42,9 +42,9 @@ policy:
 
 data:
   train:
-    data_path: "/mnt/nemotron_data/rlhf/train-split.jsonl"
+    data_path: "${oc.env:HF_HOME}/superv3_data/rlhf/train-split.jsonl"
   validation:
-    data_path: "/mnt/nemotron_data/rlhf/val-split.jsonl"
+    data_path: "${oc.env:HF_HOME}/superv3_data/rlhf/val-split.jsonl"
 
 env:
   nemo_gym:

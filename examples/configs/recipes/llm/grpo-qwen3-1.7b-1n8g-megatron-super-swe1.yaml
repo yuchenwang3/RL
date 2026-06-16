@@ -46,9 +46,9 @@ policy:
 
 data:
   train:
-    data_path: "/mnt/nemotron_data/swe1/train-split.jsonl"
+    data_path: "${oc.env:HF_HOME}/superv3_data/swe1/train-split.jsonl"
   validation:
-    data_path: "/mnt/nemotron_data/swe1/val-split.jsonl"
+    data_path: "${oc.env:HF_HOME}/superv3_data/swe1/val-split.jsonl"
 
 logger:
   wandb_enabled: true
