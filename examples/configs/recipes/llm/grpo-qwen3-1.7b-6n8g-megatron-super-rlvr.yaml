@@ -7,13 +7,9 @@
 #   - 5 nodes: nemo-gym judge servers (genrm, nl2bash, safety)
 #              inherited from stage1_rlvr.yaml (env.nemo_gym.num_gpu_nodes: 5)
 #
-# Judge server settings are scaled down from small_stage1_rlvr_21node.yaml.
-#
 # Data: nvidia/Nemotron-RL-Super-Training-Blends (rlvr1 split).
 # See docs/guides/nemotron-3-super.md for download instructions.
-#
-# TODO: Fill in data.train.data_path and data.validation.data_path.
-defaults: ../../super/stage1_rlvr.yaml
+defaults: ../../../nemo_gym/nemotron-3-super/stage1_rlvr.yaml
 
 checkpointing:
   checkpoint_dir: results/grpo-qwen3-1.7b-6n8g-megatron-super-rlvr
@@ -26,60 +22,37 @@ grpo:
 
 policy:
   model_name: "Qwen/Qwen3-1.7B"
-  tokenizer:
-    name: "Qwen/Qwen3-1.7B"
   train_global_batch_size: 128
-  train_micro_batch_size: 1
-  logprob_batch_size: 1
   max_total_sequence_length: 8192
-  make_sequence_length_divisible_by: 1
 
   megatron_cfg:
-    # Qwen3-1.7B is a dense model — override MoE parallelism from base
     tensor_model_parallel_size: 1
-    pipeline_model_parallel_size: 1
     context_parallel_size: 1
     expert_model_parallel_size: 1
     sequence_parallel: false
     activation_checkpointing: false
 
   generation:
-    # Colocate vllm with training — Qwen3-1.7B is small enough to share a node
     colocated:
       enabled: true
-    # Qwen3-1.7B uses standard <think> tags; replace nano_v3 custom parser
     vllm_cfg:
       tensor_parallel_size: 1
-      max_model_len: 8192
-      # Null out the nano_v3 plugin inherited from stage1_rlvr.yaml
       reasoning_parser_plugin: null
       http_server_serving_chat_kwargs:
-        enable_auto_tools: true
-        tool_parser: qwen3_coder
         reasoning_parser: deepseek_r1
-    # Qwen3-1.7B is a dense Transformer — remove Mamba-specific kwarg
-    vllm_kwargs:
-      compilation_config:
-        cudagraph_capture_sizes: [1, 2, 4, 8, 16, 32, 64]
 
 data:
   train:
-    # See docs/guides/nemotron-3-super.md for download instructions.
     data_path: "/mnt/nemotron_data/rlvr1/train-split.jsonl"
   validation:
     data_path: "/mnt/nemotron_data/rlvr1/val-split.jsonl"
 
 env:
   nemo_gym:
-    # genrm_compare buffers rollouts until num_rollouts_per_prompt are received
-    # before scoring. Must match num_generations_per_prompt or rollout
-    # collection hangs waiting for a cohort that never fills.
     genrm_compare_resources_server:
       resources_servers:
         genrm_compare:
-          num_rollouts_per_prompt: 8  # must match grpo.num_generations_per_prompt
-    # Scaled-down judge server settings from small_stage1_rlvr_21node.yaml.
-    # num_gpu_nodes: 5 is inherited from stage1_rlvr.yaml.
+          num_rollouts_per_prompt: 8
     genrm_model:
       responses_api_models:
         genrm_model:
@@ -104,8 +77,6 @@ logger:
     name: grpo-qwen3-1.7b-6n8g-megatron-super-rlvr
 
 cluster:
-  gpus_per_node: 8
-  # cluster.num_nodes is the Ray-cluster (policy) node count only.
-  # The 5 nemo-gym judge nodes (env.nemo_gym.num_gpu_nodes, inherited from
-  # stage1_rlvr.yaml) are allocated separately outside the policy Ray cluster.
+  # cluster.num_nodes is policy-only; the 5 nemo-gym nodes are separate.
+  # Total SLURM nodes = cluster.num_nodes (1) + env.nemo_gym.num_gpu_nodes (5) = 6.
   num_nodes: 1
