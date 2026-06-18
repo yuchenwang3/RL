@@ -1,7 +1,7 @@
 defaults: ../../grpo_math_1B.yaml
 
 grpo:
-  num_prompts_per_step: 4
+  num_prompts_per_step: 16
   num_generations_per_prompt: 8
 
 checkpointing:
@@ -11,7 +11,7 @@ policy:
   model_name: "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16"
   tokenizer:
     name: "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16"
-  train_global_batch_size: 32
+  train_global_batch_size: 128
   train_micro_batch_size: 1
   logprob_batch_size: 1
   logprob_chunk_size: 2048              # Chunk logprob to reduce peak memory; requires defer_fp32_logits
@@ -22,9 +22,6 @@ policy:
     enabled: false
   megatron_cfg:
     enabled: true
-    # H100 nightly: TP=4/PP=1/CP=1/EP=32 on 16 nodes (128 GPUs)
-    # World size = TP(4) x PP(1) x CP(1) x DP(32) = 128 GPUs = 16 nodes; EP(32) <= DP(32)
-    # EP=32 reduces expert memory: 100B/32*2B=~6 GB/GPU vs ~25 GB/GPU with EP=8
     tensor_model_parallel_size: 4
     pipeline_model_parallel_size: 1
     context_parallel_size: 1
