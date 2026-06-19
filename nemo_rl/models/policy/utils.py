@@ -37,6 +37,16 @@ try:
         NeMoAutoModelForTextToWaveform,
     )
 
+    # Side-effect import: installs the resolver hook in mistral3_vlm/__init__.py
+    # that routes FP8-native Mistral 3.5 VLM configs to
+    # Mistral3FP8VLMForConditionalGeneration. Without it, the registry falls
+    # through to mistral4.model and HF's stock FP8Linear path runs instead,
+    # producing 0-d weight_scale_inv parameters that FSDP2 rejects.
+    try:
+        import nemo_automodel.components.models.mistral3_vlm  # noqa: F401
+    except ImportError:
+        pass
+
     NEMO_AUTOMODEL_AVAILABLE = True
 except ImportError:
     # nemo_automodel is not installed, classes will be None
