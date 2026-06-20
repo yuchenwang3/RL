@@ -37,6 +37,12 @@ policy:
     moe_enable_deepep: false
     moe_token_dispatcher_type: "alltoall"
     defer_fp32_logits: true             # Required when logprob_chunk_size is set
+  
+    ## mtp
+    mtp_num_layers: 2
+    mtp_use_repeated_layer: true
+    mtp_loss_scaling_factor: 0.3
+
   generation:
     vllm_cfg:
       tensor_parallel_size: 8
