@@ -43,6 +43,7 @@ from nemo_rl.models.generation.interfaces import (
 from nemo_rl.models.generation.vllm.utils import (
     format_prompt_for_vllm_generation,
     pad_and_align_routed_expert_indices,
+    resolve_collective_rpc_result,
 )
 from nemo_rl.models.generation.vllm.vllm_worker import BaseVllmGenerationWorker
 
@@ -181,6 +182,10 @@ class VllmAsyncGenerationWorkerImpl(BaseVllmGenerationWorker):
                           the vLLM worker subprocess.
             defer_model_load: If True, skip model loading and only reserve port
         """
+        self.server_thread = None
+        self.base_url = None
+        self.http_server = None
+
         # Deferred-loading state. Always initialized so every instance has a
         # consistent set of attributes regardless of init path.
         self._reserved_socket = None
@@ -280,7 +285,6 @@ class VllmAsyncGenerationWorkerImpl(BaseVllmGenerationWorker):
             self.llm_async_engine_args, stat_loggers=self.stat_loggers
         )
 
-        self.server_thread, self.base_url, self.http_server = None, None, None
         if self.cfg["vllm_cfg"].get("expose_http_server"):
             # Must run after AsyncLLM.from_engine_args and before
             # _setup_vllm_server spawns the uvicorn thread.
@@ -931,6 +935,15 @@ class VllmAsyncGenerationWorkerImpl(BaseVllmGenerationWorker):
                 train_world_size,
             ),
         )
+
+    async def checkpoint_engine_rpc_async(
+        self, checkpoint_method: str, method_args: tuple[Any, ...] = ()
+    ) -> Any:  # pragma: no cover
+        result = await self.llm.collective_rpc(checkpoint_method, args=method_args)
+        result = await resolve_collective_rpc_result(result)
+        if checkpoint_method == "update_weights_from_checkpoint_engine":
+            return all(item for item in result if item is not None)
+        return result
 
     async def generate_async(
         self,

@@ -216,7 +216,11 @@ class BaseVllmGenerationWorker:
         # Store the Python executable being used by this worker
         self.py_executable = sys.executable
 
-        _apply_vllm_patches(self.py_executable, extra_env_vars=extra_env_vars)
+        _apply_vllm_patches(
+            self.py_executable,
+            extra_env_vars=extra_env_vars,
+            checkpoint_engine_config=config.get("checkpoint_engine"),
+        )
 
         # Skip model loading if we're not the model owner
         if not self.is_model_owner:
@@ -561,6 +565,14 @@ class VllmGenerationWorkerImpl(BaseVllmGenerationWorker):
                 train_world_size,
             ),
         )
+
+    def checkpoint_engine_rpc(
+        self, checkpoint_method: str, method_args: tuple[Any, ...] = ()
+    ) -> Any:  # pragma: no cover
+        result = self.llm.collective_rpc(checkpoint_method, args=method_args)
+        if checkpoint_method == "update_weights_from_checkpoint_engine":
+            return all(item for item in result if item is not None)
+        return result
 
     @wrap_with_nvtx_name("vllm_genertion_worker/generate")
     def generate(

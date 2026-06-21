@@ -1652,6 +1652,8 @@ def test_refit_policy_generation_non_colocated_offloads_and_restores(monkeypatch
             calls.append("prepare_for_training")
 
     class DummyGeneration:
+        cfg = {"checkpoint_engine": {"enabled": False}}
+
         def update_weights_from_collective(self):
             calls.append("update_weights_from_collective")
             return ["inference-ok"]
@@ -1671,6 +1673,42 @@ def test_refit_policy_generation_non_colocated_offloads_and_restores(monkeypatch
         "update_weights_from_collective",
         "prepare_for_training",
     ]
+
+
+def test_refit_policy_generation_checkpoint_engine_uses_weight_sync(monkeypatch):
+    from nemo_rl.algorithms import grpo as grpo_mod
+
+    policy = object()
+    sync = MagicMock()
+    kv_scales = {"layer_0": 1.0}
+
+    class DummyGeneration:
+        cfg = {
+            "backend": "vllm",
+            "checkpoint_engine": {"enabled": True, "backend": "nixl"},
+        }
+
+    generation = DummyGeneration()
+    create_sync = MagicMock(return_value=sync)
+    monkeypatch.setattr(grpo_mod, "create_weight_synchronizer", create_sync)
+
+    grpo_mod.refit_policy_generation(
+        policy=policy,
+        policy_generation=generation,
+        colocated_inference=False,
+        _refit_buffer_size_gb=2,
+        timer=None,
+        kv_scales=kv_scales,
+    )
+
+    create_sync.assert_called_once_with(
+        policy=policy,
+        generation=generation,
+        generation_backend="vllm",
+        colocated=False,
+        refit_buffer_size_gb=2,
+    )
+    sync.sync_weights.assert_called_once_with(timer=None, kv_scales=kv_scales)
 
 
 def test_grpo_train_collects_generation_logger_and_seq_metrics(

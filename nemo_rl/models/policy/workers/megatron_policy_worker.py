@@ -87,7 +87,10 @@ from nemo_rl.models.policy.interfaces import (
     ReferenceLogprobOutputSpec,
 )
 from nemo_rl.models.policy.utils import get_runtime_env_for_policy_worker
-from nemo_rl.models.policy.workers.base_policy_worker import AbstractPolicyWorker
+from nemo_rl.models.policy.workers.base_policy_worker import (
+    AbstractPolicyWorker,
+    maybe_preinit_nixl_checkpoint_engine,
+)
 from nemo_rl.models.policy.workers.patches import apply_transformer_engine_patch
 from nemo_rl.utils.nsys import wrap_with_nvtx_name
 from nemo_rl.utils.nvml import log_gpu_memory_diagnostics
@@ -270,6 +273,7 @@ class MegatronPolicyWorkerImpl(
 
         self.cfg = config
         self._router_replay_enabled = router_replay_enabled(config)
+        self._nixl_preinit_agent = maybe_preinit_nixl_checkpoint_engine(config)
 
         # Set rank for non-collocated to check which ranks to broadcast from
         self.rank = get_rank_safe()
@@ -1317,6 +1321,11 @@ class MegatronPolicyWorkerImpl(
             rank=self.rank,
             worker_name=str(self),
         )
+
+    def _checkpoint_engine_weight_iterator(
+        self, kv_scales: Optional[dict[str, float]] = None
+    ) -> Iterator[tuple[str, torch.Tensor]]:
+        return self._iter_params_with_optional_kv_scales(kv_scales=kv_scales)
 
     @torch.no_grad()
     def broadcast_weights_for_collective(
