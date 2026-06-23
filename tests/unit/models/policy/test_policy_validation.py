@@ -54,6 +54,35 @@ def create_mock_tokenizer():
     return tokenizer
 
 
+def test_policy_prepare_for_lp_inference_waits_for_delta_baseline(monkeypatch):
+    events = []
+
+    class WorkerGroup:
+        def run_all_workers_single_data(self, method_name: str):
+            events.append(("run", method_name))
+            return ["lp-inference-ref"]
+
+    def fake_ray_get(refs):
+        events.append(("get", refs))
+        return refs
+
+    monkeypatch.setattr("nemo_rl.models.policy.lm_policy.ray.get", fake_ray_get)
+    policy = object.__new__(Policy)
+    policy.worker_group = WorkerGroup()
+    policy._delta_baseline_prewarm_refs = ["baseline-ref"]
+    policy._delta_baseline_prewarm_submitted = True
+
+    Policy.prepare_for_lp_inference(policy)
+
+    assert events == [
+        ("get", ["baseline-ref"]),
+        ("run", "prepare_for_lp_inference"),
+        ("get", ["lp-inference-ref"]),
+    ]
+    assert policy._delta_baseline_prewarm_refs == []
+    assert not policy._delta_baseline_prewarm_submitted
+
+
 def create_dtensor_config(
     model_name: str, tp: int, pp: int = 1, cp: int = 1
 ) -> PolicyConfig:
