@@ -84,6 +84,18 @@ def _resolve_enable_prefix_caching(vllm_cfg: dict[str, Any]) -> bool:
     return enable_prefix_caching
 
 
+def _with_neutral_generation_config(
+    vllm_kwargs: dict[str, Any],
+) -> dict[str, Any]:
+    """Default unset sampling parameters to vLLM's neutral values.
+
+    Keep an explicit ``generation_config`` override from ``vllm_kwargs``. A
+    mapping merge is used instead of mixing a named argument with ``**kwargs``;
+    the latter raises ``TypeError`` when the override is present.
+    """
+    return {"generation_config": "vllm", **vllm_kwargs}
+
+
 def _merge_fp8_kwargs(vllm_kwargs: dict[str, Any], fp8_kwargs: dict[str, Any]) -> None:
     """Merge fp8 init kwargs into ``vllm_kwargs`` in place, preserving user overrides.
 
@@ -563,6 +575,7 @@ class BaseVllmGenerationWorker:
             # Text-only runs additionally set generation.vllm_kwargs.language_model_only
             # in the recipe YAML to skip vLLM's multimodal preflight.
 
+        vllm_kwargs = _with_neutral_generation_config(vllm_kwargs)
         llm_kwargs = dict(
             model=self.model_name,
             served_model_name=self.model_name,
@@ -589,13 +602,6 @@ class BaseVllmGenerationWorker:
             enable_sleep_mode=True,
             # Set disable_log_stats=False so that self.llm.get_metrics() works.
             disable_log_stats=False,
-            # Resolve sampling params NeMo-RL leaves unset (min_p,
-            # repetition_penalty, ...) to vLLM's neutral defaults instead of the
-            # model's generation_config.json, so policy.generation.* stays the
-            # single source of truth for the sampling distribution that the
-            # train-side logprob rescaling assumes. Overridable via
-            # generation.vllm_kwargs.generation_config. See #3497.
-            generation_config="vllm",
             **vllm_kwargs,
         )
 

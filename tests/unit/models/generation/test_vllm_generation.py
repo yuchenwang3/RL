@@ -41,6 +41,7 @@ from nemo_rl.models.generation.vllm.vllm_worker import (
     VllmGenerationWorkerImpl,
     _context_capped_max_new_tokens,
     _resolve_enable_prefix_caching,
+    _with_neutral_generation_config,
 )
 from nemo_rl.models.generation.vllm.vllm_worker_async import (
     VllmAsyncGenerationWorkerImpl,
@@ -208,6 +209,19 @@ def test_resolve_enable_prefix_caching_uses_cuda_capability_for_auto(monkeypatch
     monkeypatch.setattr(torch.cuda, "get_device_capability", lambda: (7, 5))
 
     assert _resolve_enable_prefix_caching({}) is False
+
+
+def test_neutral_generation_config_is_the_default():
+    assert _with_neutral_generation_config({"enforce_eager": True}) == {
+        "generation_config": "vllm",
+        "enforce_eager": True,
+    }
+
+
+def test_explicit_generation_config_override_is_preserved():
+    assert _with_neutral_generation_config({"generation_config": "auto"}) == {
+        "generation_config": "auto"
+    }
 
 
 basic_lora_test_config: LoRAConfig = {
